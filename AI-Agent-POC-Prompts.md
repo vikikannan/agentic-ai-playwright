@@ -557,3 +557,106 @@ Updated only tests/product-search.spec.ts. When the prompt appears, the test now
 
 Validation: Chromium run passed — 1 test passed. No other files were changed in this update.
 
+# Prompt 8 — Inspect the Repository for GitHub Actions CI
+
+Act as a CI/CD engineer helping prepare this Agentic AI Playwright POC for a team demonstration.
+
+## Project context
+
+- Repository: `vikikannan/agentic-ai-playwright`
+- Branch: `main`
+- Local project: `C:\Users\VigneshKannan\projects\agentic-ai-playwright-poc-v1`
+- Framework: Playwright with TypeScript
+- Current test: `tests/product-search.spec.ts`
+- Test application: `https://www.automationexercise.com/`
+- Node.js: v20.12.2
+- Playwright: v1.64.0
+- Package manager: npm
+- Existing GitHub Actions directory: `.github/workflows/`
+The AE-04 product-search test has passed locally. We want to run it in GitHub Actions and publish the test report and failure diagnostics.
+
+## Your task
+Inspect the existing project and recommend the smallest reliable GitHub Actions setup for this POC.
+
+Inspect:
+
+1. `package.json` and the lockfile.
+2. `playwright.config.ts`.
+3. The current test files under `tests/`.
+4. All existing files under `.github/workflows/`.
+5. `.gitignore` and the current artifact/report configuration.
+
+## Proposed CI requirements
+The eventual workflow should:
+
+- Run on pushes to `main` and on pull requests targeting `main`.
+- Support manual execution using `workflow_dispatch`.
+- Use the existing npm lockfile and `npm ci`.
+- Install the browser dependencies required by the selected Playwright project.
+- Run the existing AE-04 test in Chromium initially.
+- Preserve the configured test assertions; do not weaken them to accommodate CI.
+- Generate a Playwright HTML report.
+- Upload the HTML report and useful failure artifacts, including traces or screenshots when available.
+- Upload diagnostic artifacts even when the test fails.
+- Avoid storing credentials or introducing secrets unnecessarily.
+- Avoid unrelated infrastructure, additional frameworks, or changes to the public test application.
+
+## Constraints
+
+- Do not create or modify files yet.
+- Do not commit or push changes.
+- Do not change the test or its assertions.
+- Do not modify the existing Copilot setup workflow.
+- Do not assume the repository's current scripts or configuration; inspect the actual files first.
+- Identify compatibility issues before recommending changes.
+
+## Expected output
+Report:
+
+1. The current project and workflow configuration.
+2. What can be reused without modification.
+3. Any blockers or risks for running the test in GitHub Actions.
+4. The exact proposed workflow file path and its intended triggers and steps.
+5. Any necessary changes, with a reason for each.
+Stop after the inspection and wait for approval before implementation.
+
+## AI Agent Result
+
+### Updated assessment
+
+The pushed changes are present on local `main`, aligned with `origin/main` at `9b1685e` (`Added new testcase`), and the worktree is clean. The AE-04 test and its `baseURL` configuration are tracked, resolving the earlier missing-file/config blocker.
+
+#### 1. Current project and workflow configuration
+
+- `package.json` declares `@playwright/test` `^1.64.0` and has no npm scripts. `package-lock.json` locks Playwright to `1.64.0`; its package engine requires Node `>=20`.
+- Local versions are Node `20.12.2`, npm `10.7.0`, and Playwright `1.64.0`.
+- `playwright.config.ts` uses `https://www.automationexercise.com` as `baseURL`, configures the HTML reporter, and defines Chromium, Firefox, and WebKit projects. On CI it enables two retries and one worker. Traces are configured for the first retry; screenshots and videos are not configured.
+- `tests/` contains the AE-04 product-search test, a seed test, and the default example tests. A CI workflow should explicitly select AE-04 and Chromium.
+- `.github/workflows/` contains only `copilot-setup-steps.yml`. It is not a project test workflow: it triggers manually or when that workflow file changes. It installs dependencies and all Playwright browsers, then runs `npx run build`; that is not the standard npm-script invocation, and this project has no build script.
+- `.gitignore` ignores `test-results/` and `playwright-report/`. This does not prevent Actions from uploading generated files from the job workspace.
+
+#### 2. What can be reused
+
+Use the lockfile with `npm ci`, the existing remote `baseURL`, HTML reporter, Chromium project, and current test assertions. The committed test and configuration are available to GitHub Actions checkout. The test needs no credentials or new secrets.
+
+#### 3. Remaining blockers and risks
+
+- There is no workflow that runs the test on pushes or pull requests. The Copilot setup workflow does not provide that coverage.
+- The current trace setting only captures traces on retry; there is no configured screenshot capture. Uploading `test-results/` will preserve available diagnostics, while uploading `playwright-report/` will preserve the HTML report.
+- CI retries can allow a flaky test to pass after a failure. They do not weaken assertions, but the report should be checked for retries/flaky status.
+- The test depends on a public third-party site and its live product catalogue, consent UI, and observed Blue Top price. External site changes, network availability, or data changes may cause CI failures.
+- The existing Copilot setup workflow's build step looks incompatible with the current package configuration. Per the prompt constraint, leave that workflow unchanged; it is separate from the proposed test workflow.
+
+#### 4. Proposed workflow
+
+**File:** `.github/workflows/playwright-ci.yml`
+
+**Triggers:** pushes to `main`, pull requests targeting `main`, and `workflow_dispatch`.
+
+**Steps:** checkout; set up Node 20.12.2 with npm caching; run `npm ci`; install Chromium and its OS dependencies with `npx playwright install --with-deps chromium`; run `npx playwright test tests/product-search.spec.ts --project=chromium`; and upload both `playwright-report/` and `test-results/` with an always-run condition and finite retention.
+
+#### 5. Necessary changes
+
+The earlier prerequisites are satisfied: the AE-04 test and remote `baseURL` change are committed. The remaining required change is adding the new CI workflow. Optionally, configure screenshots on failure if screenshot diagnostics are desired; traces are already configured for retries.
+
+This was an inspection only: no files were changed, and no GitHub Actions run results were checked or claimed.
