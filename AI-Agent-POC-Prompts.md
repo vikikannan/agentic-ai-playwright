@@ -660,3 +660,75 @@ Use the lockfile with `npm ci`, the existing remote `baseURL`, HTML reporter, Ch
 The earlier prerequisites are satisfied: the AE-04 test and remote `baseURL` change are committed. The remaining required change is adding the new CI workflow. Optionally, configure screenshots on failure if screenshot diagnostics are desired; traces are already configured for retries.
 
 This was an inspection only: no files were changed, and no GitHub Actions run results were checked or claimed.
+
+# Prompt 9 — Implement the Playwright CI Workflow
+Act as a CI/CD engineer implementing the first automated test pipeline for this Agentic AI Playwright POC.
+
+Context
+Repository: vikikannan/agentic-ai-playwright
+Branch: main
+Framework: Playwright with TypeScript
+Node.js version: 20.12.2 locally
+Playwright version: 1.64.0
+Test: tests/product-search.spec.ts
+Project: chromium
+Base URL: https://www.automationexercise.com
+Existing workflow: .github/workflows/copilot-setup-steps.yml
+The current Git worktree is clean, and the AE-04 test and Playwright configuration are committed.
+Objective
+Create a dedicated GitHub Actions workflow that runs AE-04 in Chromium and publishes the Playwright HTML report and available diagnostic artifacts.
+
+Requirements
+Create .github/workflows/playwright-ci.yml.
+Trigger on:
+Pushes to main
+Pull requests targeting main
+Manual execution using workflow_dispatch
+Use actions/checkout and actions/setup-node with Node.js 20.12.2. Enable npm caching using the existing lockfile.
+Run npm ci.
+Install Chromium and its required operating-system dependencies using npx playwright install --with-deps chromium.
+Run only the approved AE-04 test using:
+npx playwright test tests/product-search.spec.ts --project=chromium
+Preserve all existing test assertions and consent behavior. Do not edit the test or weaken assertions to make CI pass.
+Upload playwright-report/ and test-results/ using actions/upload-artifact.
+Ensure artifact uploads run even when the test step fails. Use meaningful artifact names and a finite retention period, such as 14 days.
+Configure the workflow with appropriate permissions, preferably read-only repository contents unless additional permissions are demonstrably required.
+Do not expose secrets or introduce unnecessary credentials.
+Do not modify playwright.config.ts, test files, package files, .gitignore, or copilot-setup-steps.yml.
+Do not commit or push changes.
+Use stable action versions and valid GitHub Actions syntax. Explain the selected action versions.
+Validation
+Inspect the generated YAML for valid syntax and correct step ordering.
+Check that the report and diagnostic upload steps use an always-run condition.
+Identify any limitations that cannot be verified locally.
+Do not claim a successful GitHub Actions run; this must be verified after the workflow is pushed.
+Output
+Report:
+
+The file created.
+The workflow triggers and execution steps.
+Any assumptions or compatibility concerns.
+The exact local commands to validate and commit the workflow.
+Stop after implementation and reporting. Do not make unrelated changes.
+11:41 AM
+I’ll add only the dedicated workflow, then inspect its YAML and step conditions.
+
+Created
+ playwright-ci.yml+56-0
+Created .github/workflows/playwright-ci.yml.
+
+It runs on pushes and pull requests targeting main, and supports workflow_dispatch. The job checks out the repository, sets up Node 20.12.2 with npm caching, runs npm ci, installs Chromium and OS dependencies, then runs only the AE-04 Chromium test. It uploads the HTML report and test diagnostics with if: always() and a 14-day retention period. Permissions are limited to contents: read.
+
+The workflow uses actions/checkout@v6 and actions/setup-node@v6, matching the versions already used in the Copilot setup workflow; uploads use the stable actions/upload-artifact@v4. I did not change the test, project config, package files, ignore rules, or Copilot workflow.
+
+Validation: I reviewed the YAML structure and step ordering. I couldn’t run a YAML parser locally because Python and actionlint are unavailable; no GitHub Actions run was performed. The worktree also contains the earlier requested edit to AI-Agent-POC-Prompts.md; stage only the workflow if you intend to commit this change.
+
+Commands to run locally:
+npm ci
+npx playwright install --with-deps chromium
+npx playwright test tests/product-search.spec.ts --project=chromium
+
+git add .github/workflows/playwright-ci.yml
+git commit -m "Add Playwright CI workflow" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+
+No commit or push was made.

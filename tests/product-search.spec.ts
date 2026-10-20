@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('Search for a matching product and verify the result', () => {
-  test('Search for a matching product and verify the result', async ({ page }) => {
+  test('Search for a matching product and verify the result', { tag: '@poc' }, async ({ page }) => {
     // 1. Navigate to the product catalogue for AE-04.
     await page.goto('/products');
 
