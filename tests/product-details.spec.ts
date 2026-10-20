@@ -31,7 +31,22 @@ test.describe('View product details', () => {
     // 3. Open Blue Top's detail page from its product card.
     const blueTopCard = page.locator('.product-image-wrapper').filter({ hasText: 'Blue Top' });
     await expect(blueTopCard).toBeVisible();
-    await blueTopCard.getByRole('link', { name: /View Product/ }).click();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await blueTopCard.getByRole('link', { name: /View Product/ }).click();
+      await expect(page).toHaveURL(
+        url =>
+          url.pathname === '/product_details/1' ||
+          (url.pathname === '/products' && url.hash === '#google_vignette'),
+      );
+
+      if (new URL(page.url()).hash !== '#google_vignette') {
+        break;
+      }
+
+      if (attempt === 0) {
+        await page.goto('/products');
+      }
+    }
 
     // 4. Verify the detail route and the observed Blue Top product information.
     await expect(page).toHaveURL(/\/product_details\/1$/);
