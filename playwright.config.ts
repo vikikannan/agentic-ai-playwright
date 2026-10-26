@@ -1,4 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
+import { defineBddConfig } from 'playwright-bdd';
+
+const bddTestDir = defineBddConfig({
+  features: 'features/**/*.feature',
+  steps: 'features/steps/**/*.ts',
+  outputDir: '.features-gen',
+});
 
 /**
  * Read environment variables from file.
@@ -46,6 +53,12 @@ export default defineConfig({
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
+    },
+
+    {
+      name: 'bdd-chromium',
+      testDir: bddTestDir,
+      use: { ...devices['Desktop Chrome'] },
     },
 
     /* Test against mobile viewports. */
