@@ -31,16 +31,25 @@ jobs:
         run: npm ci
 
       - name: Install Playwright Chromium
+        id: install-browsers
         run: npx playwright install --with-deps chromium
 
+      # Each test group writes to its own report and results folder so the BDD run
+      # does not overwrite the functional results.
       - name: Run functional tests in Chromium
-        run: npx playwright test --project=chromium
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/functional
+        run: npx playwright test --project=chromium --output=test-results/functional
 
       - name: Generate Gherkin tests
+        if: ${{ !cancelled() && steps.install-browsers.outcome == 'success' }}
         run: npm run bdd:generate
 
       - name: Run AE-04 Gherkin test in Chromium
-        run: npx playwright test --project=bdd-chromium --grep "Search for an existing product"
+        if: ${{ !cancelled() && steps.install-browsers.outcome == 'success' }}
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/bdd
+        run: npx playwright test --project=bdd-chromium --grep "Search for an existing product" --output=test-results/bdd
 
       - name: Upload Playwright HTML report
         if: always()
