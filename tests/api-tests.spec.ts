@@ -38,4 +38,40 @@ test.describe('Automation Exercise API tests', () => {
       'search_product parameter is missing'
     );
   });
+
+
+  test('API-03: Search product successfully', async ({ request }) => {
+    const response = await request.post(
+      `${baseURL}/api/searchProduct`,
+      { form: { search_product: 'top' } }
+    );
+
+    expect(response.status(), 'API-03 should return HTTP 200').toBe(200);
+
+    const body = await response.json();
+
+    expect(body.responseCode, 'API-03 application response code should be 200').toBe(200);
+    expect(
+      Array.isArray(body.products),
+      'API-03 response should contain a products array'
+    ).toBe(true);
+    expect(
+      body.products.length,
+      'API-03 search should return at least one product'
+    ).toBeGreaterThan(0);
+
+    for (const product of body.products) {
+      expect(product.id, 'Each search result should include a product id').toBeDefined();
+      expect(
+        product.name,
+        'Each search result should include a non-empty product name'
+      ).toEqual(expect.any(String));
+      expect(product.name.trim().length, 'Product names should not be empty').toBeGreaterThan(0);
+      expect(
+        product.price,
+        'Each search result should include a non-empty product price'
+      ).toEqual(expect.any(String));
+      expect(product.price.trim().length, 'Product prices should not be empty').toBeGreaterThan(0);
+    }
+  });
 });
