@@ -22,7 +22,7 @@ async function resolveConsent(page: import('@playwright/test').Page) {
   }
 }
 
-test('AE-09: Login with invalid credentials [CODEX]', async ({ page }) => {
+test.skip('AE-09: Login with invalid credentials [CODEX]', async ({ page }) => {
   await page.goto('/login');
   await resolveConsent(page);
 

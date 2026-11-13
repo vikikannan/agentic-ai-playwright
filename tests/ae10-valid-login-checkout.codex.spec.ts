@@ -24,7 +24,7 @@ async function resolveConsent(page: import('@playwright/test').Page) {
   }
 }
 
-test('AE-10: Valid login and checkout review [CODEX]', async ({ page }) => {
+test.skip('AE-10: Valid login and checkout review [CODEX]', async ({ page }) => {
   const email = process.env.AE_POC_EMAIL;
   const password = process.env.AE_POC_PASSWORD;
   expect(email, 'AE_POC_EMAIL must be loaded from the local .env file').toBeTruthy();

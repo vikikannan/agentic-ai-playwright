@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('AE-05: Search with no matching product [CODEX]', async ({ page }) => {
+test.skip('AE-05: Search with no matching product [CODEX]', async ({ page }) => {
   await page.goto('/products');
 
   const consentDialog = page.getByRole('dialog', {

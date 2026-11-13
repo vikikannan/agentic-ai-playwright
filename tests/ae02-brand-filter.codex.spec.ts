@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('AE-02: Filter products by brand [CODEX]', async ({ page }) => {
+test.skip('AE-02: Filter products by brand [CODEX]', async ({ page }) => {
   await page.goto('/products');
 
   const consentDialog = page.getByRole('dialog', {

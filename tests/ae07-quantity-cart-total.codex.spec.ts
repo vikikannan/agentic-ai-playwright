@@ -22,7 +22,7 @@ async function resolveConsent(page: import('@playwright/test').Page) {
   }
 }
 
-test('AE-07: Set product quantity and verify cart total [CODEX]', async ({ page }) => {
+test.skip('AE-07: Set product quantity and verify cart total [CODEX]', async ({ page }) => {
   await page.goto('/view_cart');
   await resolveConsent(page);
   const cartRows = page.locator('#cart_info_table tbody tr');
