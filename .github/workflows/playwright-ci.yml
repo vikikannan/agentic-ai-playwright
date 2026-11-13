@@ -39,6 +39,9 @@ jobs:
       - name: Run functional tests in Chromium
         env:
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/functional
+          # Credentials for the AE-10 login tests, read from repository secrets.
+          AE_POC_EMAIL: ${{ secrets.AE_POC_EMAIL }}
+          AE_POC_PASSWORD: ${{ secrets.AE_POC_PASSWORD }}
         run: npx playwright test --project=chromium --output=test-results/functional
 
       - name: Generate Gherkin tests

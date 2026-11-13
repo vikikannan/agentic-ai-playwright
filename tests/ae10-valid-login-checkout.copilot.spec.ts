@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 
 test('AE-10: Valid login and checkout review [COPILOT]', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'AE-10 uses the POC account in Chromium only.');
+  // Login, cart, product, cart and checkout pages on this ad-heavy site do not fit in the default 30 s.
+  test.setTimeout(90_000);
 
   const email = process.env.AE_POC_EMAIL;
   const password = process.env.AE_POC_PASSWORD;
@@ -56,6 +58,7 @@ test('AE-10: Valid login and checkout review [COPILOT]', async ({ page, browserN
     await productInformation.getByRole('button', { name: 'Add to cart' }).click();
     await expect(page.getByRole('heading', { name: 'Added!' })).toBeVisible();
     await page.getByRole('link', { name: 'View Cart' }).click();
+    await expect(page).toHaveURL(/\/view_cart\/?$/);
 
     const blueTopRow = page.locator('#product-1');
     await expect(blueTopRow.getByRole('heading', { name: 'Blue Top', exact: true })).toBeVisible();

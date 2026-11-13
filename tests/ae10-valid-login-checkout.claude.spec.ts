@@ -10,6 +10,8 @@ test.describe('Valid login and checkout review', () => {
 
   test('AE-10: Valid login and checkout review [CLAUDE]', { tag: '@poc' }, async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'AE-10 uses the shared POC account and runs in Chromium only.');
+    // Login, cart, product, cart and checkout pages on this ad-heavy site do not reliably fit in the default 30 s.
+    test.setTimeout(90_000);
 
     // Credentials come only from the environment (loaded with node --env-file); they are never logged.
     const email = process.env.AE_POC_EMAIL;
