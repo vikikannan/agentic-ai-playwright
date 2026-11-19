@@ -1,7 +1,11 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('View product details', () => {
-  test('View the details for Blue Top', { tag: '@poc' }, async ({ page }) => {
+  test('View the details for Blue Top', {
+    tag: ['@poc', '@xray'],
+    // Xray: report results of this test against the existing Xray Test QTM-8.
+    annotation: { type: 'test_key', description: 'QTM-8' },
+  }, async ({ page }) => {
     // 1. Navigate to the product catalogue.
     await page.goto('/products');
 

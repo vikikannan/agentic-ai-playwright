@@ -29,7 +29,11 @@ export default defineConfig({
   /* Opt out of parallel tests on CI. */
   workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: 'html',
+  /* JUnit XML is imported into Xray; test_key annotations map results to existing Xray Tests. */
+  reporter: [
+    ['html'],
+    ['junit', { outputFile: 'test-results/junit/results.xml' }],
+  ],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     baseURL: 'https://www.automationexercise.com',

@@ -4,7 +4,10 @@
   "main": "index.js",
   "scripts": {
     "bdd:generate": "bddgen",
-    "bdd:test": "npm run bdd:generate && playwright test --project=bdd-chromium"
+    "bdd:test": "npm run bdd:generate && playwright test --project=bdd-chromium",
+    "test:xray": "playwright test --project=chromium --grep @xray",
+    "xray:import": "node scripts/xray-import.mjs",
+    "test:xray:report": "node scripts/xray-import.mjs --run"
   },
   "keywords": [],
   "author": "",

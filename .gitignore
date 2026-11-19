@@ -8,3 +8,8 @@ node_modules/
 /playwright/.auth/
 /.playwright-mcp/
 /.features-gen/
+
+# Local secrets (never commit; CI uses GitHub repository secrets)
+.env
+.env.*
+!.env.example

@@ -1,0 +1,94 @@
+# Runs the Playwright tests that are linked to Xray Tests (tag @xray, annotation test_key)
+# and imports their results into Xray Cloud as a new Test Execution in project QTM.
+# Setup, secrets and usage: docs/xray-ci-pipeline.md
+name: Playwright Xray CI
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: run the tests and check the mapping and credentials, but do not create a Test Execution'
+        type: boolean
+        default: false
+      test_plan_key:
+        description: 'Optional Xray Test Plan key to link the Test Execution to (e.g. QTM-20)'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# Never import two runs at the same time; queue them instead of cancelling.
+concurrency:
+  group: xray-import
+  cancel-in-progress: false
+
+jobs:
+  xray-tests:
+    name: Run @xray tests and import into Xray
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      XRAY_PROJECT_KEY: QTM
+      # Must be enabled as a test environment in the QTM project's Xray settings.
+      XRAY_TEST_ENVIRONMENT: chromium
+
+    steps:
+      - name: Check Xray secrets are configured
+        env:
+          XRAY_CLIENT_ID: ${{ secrets.XRAY_CLIENT_ID }}
+          XRAY_CLIENT_SECRET: ${{ secrets.XRAY_CLIENT_SECRET }}
+        run: |
+          if [ -z "$XRAY_CLIENT_ID" ] || [ -z "$XRAY_CLIENT_SECRET" ]; then
+            echo "::error title=Xray secrets missing::Add the repository secrets XRAY_CLIENT_ID and XRAY_CLIENT_SECRET (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20.12.2
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Runs only the @xray tests in Chromium, writes test-results/junit/results.xml,
+      # imports the results that carry a test_key and reads the Test Execution back.
+      # Exit code: Playwright's (1 if a test failed; results are still imported) or 2 if the import failed.
+      - name: Run @xray tests and import results into Xray
+        env:
+          XRAY_CLIENT_ID: ${{ secrets.XRAY_CLIENT_ID }}
+          XRAY_CLIENT_SECRET: ${{ secrets.XRAY_CLIENT_SECRET }}
+          XRAY_TEST_PLAN_KEY: ${{ inputs.test_plan_key }}
+          DRY_RUN_FLAG: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: npm run test:xray:report -- $DRY_RUN_FLAG
+
+      - name: Upload Playwright HTML report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: xray-playwright-html-report
+          path: playwright-report/
+          if-no-files-found: warn
+          retention-days: 14
+
+      # results.xml (full report), xray-import.xml (exact payload sent to Xray) and traces.
+      - name: Upload JUnit report and test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: xray-test-results
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 14

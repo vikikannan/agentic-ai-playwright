@@ -1,7 +1,11 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('Search for a matching product and verify the result', () => {
-  test('Search for a matching product and verify the result', { tag: '@poc' }, async ({ page }) => {
+  test('Search for a matching product and verify the result', {
+    tag: ['@poc', '@xray'],
+    // Xray: report results of this test against the existing Xray Test QTM-9.
+    annotation: { type: 'test_key', description: 'QTM-9' },
+  }, async ({ page }) => {
     // 1. Navigate to the product catalogue for AE-04.
     await page.goto('/products');
 
