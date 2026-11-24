@@ -1,6 +1,22 @@
 # Playwright → Xray CI pipeline
 
-The GitHub Actions workflow [`.github/workflows/xray-ci.yml`](../.github/workflows/xray-ci.yml) runs the Playwright tests that are linked to Xray Tests. It then imports their results into Xray Cloud as a new **Test Execution** in Jira project **QTM**. Each result is recorded against the existing Xray Test, and no new tests are created.
+The GitHub Actions workflow [`.github/workflows/xray-ci.yml`](../.github/workflows/xray-ci.yml) runs the Playwright tests that are linked to Xray Tests. It then imports their results into Xray Cloud, in Jira project **QTM**. Each result is recorded against the existing Xray Test, and no new tests are created.
+
+Where the results go depends on how the workflow was started:
+
+| Started by | `test_execution_key` | Result |
+|---|---|---|
+| Jira Automation (Test Execution moved to READY FOR AUTOMATION) | the original key, e.g. `QTM-20` | That **existing** Test Execution is updated. No new Test Execution is created |
+| Manual run in GitHub with a key | e.g. `QTM-20` | Same: the existing Test Execution is updated |
+| Push to `main`, or a manual run with the key left empty | empty | A **new** Test Execution is created |
+
+### Updating an existing Test Execution
+
+1. **The key is checked before any tests run.** It must look like `QTM-<n>`, belong to project QTM, and be a Test Execution in Xray (read-only GraphQL lookup). If not, the run stops with exit code 2.
+2. **Only that execution's tests are imported.** Results for Xray Tests that are not already in the Test Execution are skipped and listed as "not in QTM-20". Xray would otherwise add those tests to it. If none of the results belong to it, nothing is imported.
+3. **The request goes to the plain JUnit endpoint:** `POST /api/v2/import/execution/junit?projectKey=QTM&testExecKey=QTM-20` (`Content-Type: text/xml`). No environment, summary or other field is sent, so the Test Execution's own fields stay unchanged.
+4. **The response is checked.** If Xray names any other issue than the original key, the run fails with exit code 2. Nothing is cleaned up automatically.
+5. **Results are read back** from the original Test Execution, and its key is published as the job output `test_execution_key`.
 
 | Playwright test | Xray Test |
 |---|---|
@@ -17,7 +33,8 @@ GitHub Actions (ubuntu-latest, Node 20.12.2, Chromium)
        2. keep only <testcase>s with a test_key property → test-results/junit/xray-import.xml
        3. validate the keys (present, QTM-*, unique)
        4. POST /api/v2/authenticate                     (XRAY_CLIENT_ID / XRAY_CLIENT_SECRET)
-       5. POST /api/v2/import/execution/junit/multipart (creates the Test Execution)
+       5a. key given: POST /api/v2/import/execution/junit?projectKey=QTM&testExecKey=<key>  (updates it)
+       5b. no key:    POST /api/v2/import/execution/junit/multipart                      (creates one)
        6. GraphQL getTestExecution → compare each Xray status with the report
   └─ upload artifacts: HTML report, JUnit report, import payload, traces
 ```
@@ -44,16 +61,18 @@ test('…', {
 
 | Trigger | What happens |
 |---|---|
-| Push to `main` | Tests run and a Test Execution is created |
-| Manual: **Actions → Playwright Xray CI → Run workflow** | Same, with two optional inputs (below) |
+| Push to `main` | Tests run and a new Test Execution is created |
+| Manual: **Actions → Playwright Xray CI → Run workflow** | Same, with three optional inputs (below) |
+| Jira Automation (`workflow_dispatch` through the GitHub API, with input `test_execution_key`) | Tests run and the given Test Execution is updated |
 | Pull requests | **Not triggered**, so each PR commit doesn't create a Test Execution. The existing `Playwright CI` workflow still tests PRs |
 
 Manual run inputs:
 
 | Input | Default | Effect |
 |---|---|---|
-| `dry_run` | off | Runs the tests and checks the mapping and Xray credentials (it authenticates) but **does not create** a Test Execution |
-| `test_plan_key` | empty | Links the new Test Execution to an existing Xray Test Plan, e.g. `QTM-20` |
+| `test_execution_key` | empty | Existing Test Execution to update, e.g. `QTM-20`. Empty creates a new one |
+| `dry_run` | off | Runs the tests, checks the mapping, the Xray credentials and the target Test Execution, and prints the exact request, but **sends no results** |
+| `test_plan_key` | empty | Links the Test Execution to an existing Xray Test Plan |
 
 A manual run is only possible once the workflow file is on the default branch (`main`).
 
@@ -118,6 +137,7 @@ Concurrent runs are queued (`concurrency: xray-import`), never run in parallel a
 ```powershell
 npm run test:xray:report                 # run the @xray tests and import
 npm run test:xray:report -- --dry-run    # run and check, but don't import
+npm run test:xray:report -- --test-exec QTM-20   # run and update existing Test Execution QTM-20
 npm run xray:import                      # import the last report again
 ```
 
@@ -128,6 +148,23 @@ Locally, the credentials come from `XRAY_CLIENT_ID` / `XRAY_CLIENT_SECRET`. On W
 1. **The job summary** shows `Test Execution QTM-NN` with QTM-8 and QTM-9 and *all statuses match*.
 2. **In Jira:** open QTM-NN. Its runs are linked to the existing QTM-8 and QTM-9, and the environment is `chromium`.
 3. **No new tests.** In Jira, search `project = QTM AND issuetype = "Xray Test"`; it should list only the existing tests (QTM-6 to QTM-9 as of 2026-11-19).
+
+### Validating the update mode with an existing Test Execution
+
+1. **Pick a Test Execution** that already contains QTM-8 and/or QTM-9, e.g. one created for this purpose. Note its key and its current number of Test Executions in QTM.
+2. **Dry run first.** Locally, run `npm run test:xray:report -- --dry-run --test-exec QTM-20`. In GitHub, run the workflow with `test_execution_key` = `QTM-20` and *Dry run* ticked. The log must show `Target: existing Test Execution QTM-20 …` and `Request: POST …/import/execution/junit?projectKey=QTM&testExecKey=QTM-20`.
+3. **Real run.** Transition the Test Execution to READY FOR AUTOMATION, or run the workflow with the key and without *Dry run*.
+4. **Check the result:**
+   - The job summary says `Test Execution QTM-20 (existing – updated)`, and the job output `test_execution_key` is `QTM-20`.
+   - In Jira, QTM-20 shows the new results for its tests (run times = import time).
+   - `project = QTM AND issuetype = "Test Execution"` returns the same number of issues as before, so no new Test Execution was created.
+   - `project = QTM AND issuetype = "Xray Test"` is unchanged, so no new tests were created.
+
+## Jira status update
+
+The repository contains **no Jira status-update code**; the workflow and script never transition Jira issues. If a Jira Automation rule moves the Test Execution to a final status after the run, it must use the original issue (the rule's trigger issue, or the key it sent as `test_execution_key`), not an issue looked up by creation date. The key that received the results is available as:
+- the job output `test_execution_key`,
+- the heading of the job summary.
 
 ## Linking another test
 

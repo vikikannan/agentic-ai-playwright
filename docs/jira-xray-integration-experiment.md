@@ -24,6 +24,7 @@
 | 11 | Question: how to run the tests locally and import the results into Xray (answer only, no changes) | Claude Code, Opus 5.5 | Not available | Not available | Not available | Same limitation. No figures were estimated. |
 | 12 | Add `@xray` tags; create the Option 2 import script and npm scripts; dry-run tests | Claude Code, Opus 5.5 | Not available | Not available | Not available | Same limitation. No figures were estimated. |
 | 13 | Phase: CI pipeline (GitHub Actions) running the @xray tests and importing into Xray; script summary output; docs | Claude Code, Opus 5.5 | Not available | Not available | Not available | Same limitation. No figures were estimated. |
+| 14 | Fix: Jira-triggered runs created a new Test Execution instead of updating the original one | Claude Code, Opus 5.5 | Not available | Not available | Not available | Same limitation. No figures were estimated. |
 
 **Token metrics availability:** The Claude Code VS Code extension does not show per-prompt or per-response token counts to the agent. They are recorded as *Not available* rather than estimated. If you need actual figures, take them from the Claude Code `/cost` command (where supported) or the Anthropic Console usage page, and add them to this table by hand.
 
@@ -906,6 +907,78 @@ Not changed: the tests, `playwright.config.ts`, `package.json`, the existing `pl
 4. **Every push to `main` creates a Test Execution.** That is acceptable for a POC. Otherwise switch to manual-only or a schedule later.
 5. **Rotate the AE_POC password.** This is still open from §17; removing `.env` from tracking does not remove it from history.
 
+### 27.6 Commit, push and first CI run (owner approved: "Yes proceed")
+
+- **Commit:** `4677697` "Add Xray CI pipeline and Playwright-to-Xray result import", pushed to `origin/main`.
+  - **Contents:** the Xray work, the workflow, the docs, and the `.env` removal and `.gitignore` change.
+  - **Pre-commit scan:** the staged diff contained no new credentials. The only match was the removed `.env` line, whose value is already in history.
+- **The first run was a real import, not a dry run.** The push to `main` triggered the workflow automatically, so the planned manual dry run did not come first.
+- **GitHub run:** *Playwright Xray CI* run #1 ([44527957698](https://github.com/vikikannan/agentic-ai-playwright/actions/runs/44527957698)). All steps succeeded, including the secret check (the secrets exist) and the import with its built-in read-back.
+- **Xray read-back (GraphQL, read-only):**
+
+| Check | Result |
+|---|---|
+| New Test Execution | **QTM-15** "Playwright CI run #1 (4677697) – chromium – 2026-11-19 12:53" (time in UTC; created 13:53 +01:00), environment `chromium` ✅ |
+| Test runs | QTM-8 **PASSED**, QTM-9 **PASSED** (2 runs) ✅ |
+| Duplicate tests | `getTests` total is still **4** (QTM-6 and QTM-7 Manual; QTM-8 and QTM-9 Generic) ✅ |
+| QTM-8/9 intact | Types are unchanged (Generic) ✅ |
+
+- **Multipart endpoint:** this was its first live use, and it set the custom summary and environment correctly.
+- **Other Test Executions in QTM not created by the agent in this session:**
+  - QTM-14 "Playwright local run – chromium – 2026-11-19 12:32" (both PASSED). This is apparently a local `npm run test:xray:report` run by the owner.
+  - QTM-13 "R1.0 Regression" (QTM-8 and QTM-9 TO DO).
+
+---
+
+## 28. Prompt 14: update the original Test Execution when Jira triggers the pipeline
+
+### 28.1 Prompt (summary of the exact request)
+
+> Jira Automation triggers the GitHub Actions workflow when a Test Execution moves to READY FOR AUTOMATION and passes the original Test Execution key, but the pipeline creates a NEW Test Execution. Create a new Test Execution only when the pipeline is triggered directly in GitHub. Investigate and fix: pass the key to `xray-import.mjs`, import into the existing Test Execution through the Xray Cloud REST API (verify `testExecKey` support and the actual request), create no new Test Executions or Tests, keep the test mapping, target the original key for any final Jira status update. Explain the root cause and solution first, and how to validate with an existing Test Execution afterwards.
+
+### 28.2 Root cause
+
+1. **The workflow ignored the key.** The `test_execution_key` input (added by the owner in `6213007`, `required: true`) was never passed to any step.
+2. **The script always created a new issue.** It had no Test Execution option and always used `POST /api/v2/import/execution/junit/multipart` with `info.fields` (project, summary, issue type "Test Execution"). Xray documents that endpoint as controlling the fields of "newly created Test Executions", so every run created one; QTM-15 was an example.
+3. **`required: true` broke direct runs.** It forced a key for manual runs, and push runs never carry inputs.
+4. **There is no Jira status-update code in the repository** (searched workflows, scripts and configs). Any transition happens in Jira Automation.
+
+### 28.3 Xray API verification
+
+- **Docs** (docs.getxray.app, "Import Execution Results – REST v2"):
+  - The JUnit examples include `?testExecKey=XNP-23` and `?projectKey=XTP&testExecKey=XNP-23`.
+  - The parameter table did not render, so no textual description of `testExecKey` was available.
+  - The response is `{"id","key","self"}`.
+  - The multipart endpoint is described only for newly created Test Executions.
+- **Safety net, because the semantics are not documented in text:** the script compares the response key with the requested key and fails (exit 2) if they differ.
+- **The request was verified without sending anything to Xray.** A test-only fetch interceptor captured the request; authentication and GraphQL reads passed through. It was:
+  `POST https://xray.cloud.getxray.app/api/v2/import/execution/junit?projectKey=QTM&testExecKey=QTM-15`, with headers `Content-Type: text/xml` and `Authorization: Bearer <redacted>`, and a body of 892 bytes with 2 testcases (QTM-8, QTM-9).
+
+### 28.4 Changes
+
+| File | Change |
+|---|---|
+| `.github/workflows/xray-ci.yml` | `test_execution_key` is now optional (default empty) and is passed to the script as `XRAY_TEST_EXECUTION_KEY`. Import step `id: xray-import`; job output `test_execution_key` |
+| `scripts/xray-import.mjs` | New `--test-exec` / `XRAY_TEST_EXECUTION_KEY`. Key checked before the tests run (format, project, read-only GraphQL lookup that it is a Test Execution). Only results for Tests already in it are imported. Plain JUnit endpoint with `testExecKey`, sending no environment or summary. Response key verified. Read-back compared. `GITHUB_OUTPUT` `test_execution_key`. The no-key path (multipart create) is unchanged. The request line is printed (never the token) |
+| `docs/xray-ci-pipeline.md` | Modes, inputs, the update flow, a validation procedure, and a note on the Jira status update |
+
+Not changed: tests, test-to-Xray mapping, `playwright.config.ts`, `package.json`, Jira/Xray.
+
+### 28.5 Verification (nothing imported, nothing created)
+
+| Check | Result |
+|---|---|
+| `--run --dry-run --test-exec QTM-15` | Target found (2 tests: QTM-8, QTM-9); 2 tests passed; request `…/junit?projectKey=QTM&testExecKey=QTM-15`; exit 0 ✅ |
+| Key is a Test (QTM-8) / nonexistent (QTM-99999) | "not found in Xray as a Test Execution", exit 2 ✅ |
+| Key in another project (ABC-1) / malformed (`QTM-1"`) | Refused, exit 2 ✅ |
+| Full non-dry path, import intercepted, GitHub env simulated | "Updated Test Execution QTM-15"; read-back matches; `GITHUB_OUTPUT` = `test_execution_key=QTM-15`; summary "(existing – updated)" ✅ |
+| Intercepted response names another key (QTM-99) | "Xray imported into QTM-99 instead of QTM-15", exit 2, no output written ✅ |
+| Report has QTM-6, which is not in QTM-15 | QTM-6 skipped "not in QTM-15"; payload has 2 testcases ✅ |
+| No key (intercepted) | `POST …/junit/multipart` (results + info), as before ✅ |
+| Workflow YAML | Parses; input optional; step env and job output present ✅ |
+
+**Not yet verified live:** a real `testExecKey` import against Xray and a Jira-triggered GitHub run. These need commit/push approval and an import into a real Test Execution (see the validation procedure in `docs/xray-ci-pipeline.md`).
+
 ---
 
 ## 18. Change log
@@ -923,4 +996,5 @@ Not changed: the tests, `playwright.config.ts`, `package.json`, the existing `pl
 | 2026-11-18 | 9 | Root cause: QTM project `testEnvironments = null` (global env not in project scope); JUnit vs JSON compared; recommendation: JUnit without environments now, keyed-only imports for CI |
 | 2026-11-18 | 10 | `chromium` enabled for QTM; import HTTP 200 created **QTM-10** with QTM-8 and QTM-9 PASSED; no duplicates; QTM-8/9 unchanged |
 | 2026-11-19 | 11–12 | `@xray` tags added; `scripts/xray-import.mjs` and npm scripts created; safety rules and end-to-end dry run verified; live multipart import awaiting approval |
-| 2026-11-19 | 13 | CI pipeline `xray-ci.yml` added (push to main and manual; reuses `npm run test:xray:report`); GitHub job summary and annotations added to the script; `docs/xray-ci-pipeline.md`; verified locally with simulated GitHub env; first GitHub run awaiting commit/push approval |
+| 2026-11-19 | 13 | CI pipeline `xray-ci.yml` added (push to main and manual; reuses `npm run test:xray:report`); GitHub job summary and annotations added to the script; `docs/xray-ci-pipeline.md`; verified locally with simulated GitHub env. Committed and pushed as `4677697` (approved); CI run #1 succeeded and created **QTM-15** (QTM-8 and QTM-9 PASSED, no duplicate tests) |
+| 2026-11-24 | 14 | Root cause of new Test Executions on Jira-triggered runs found (key not passed; multipart create always used). Script and workflow now update the given Test Execution through `testExecKey` (guarded), create only when no key is given; verified with dry runs and intercepted requests; not committed |
