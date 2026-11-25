@@ -159,12 +159,34 @@ Locally, the credentials come from `XRAY_CLIENT_ID` / `XRAY_CLIENT_SECRET`. On W
    - In Jira, QTM-20 shows the new results for its tests (run times = import time).
    - `project = QTM AND issuetype = "Test Execution"` returns the same number of issues as before, so no new Test Execution was created.
    - `project = QTM AND issuetype = "Xray Test"` is unchanged, so no new tests were created.
+   - The original issue moved from AUTOMATION IN PROGRESS to Completed (or Failed) and has a comment linking to the run.
 
-## Jira status update
+## Jira status update (Jira-triggered runs only)
 
-The repository contains **no Jira status-update code**; the workflow and script never transition Jira issues. If a Jira Automation rule moves the Test Execution to a final status after the run, it must use the original issue (the rule's trigger issue, or the key it sent as `test_execution_key`), not an issue looked up by creation date. The key that received the results is available as:
-- the job output `test_execution_key`,
-- the heading of the job summary.
+The Test Execution workflow is: READY FOR AUTOMATION → (Jira Automation) AUTOMATION IN PROGRESS → **Completed** (transition "Tests passed") or **Failed** (transition "Tests Failed").
+
+The last workflow step, **Update Jira status of the original Test Execution**, runs [`scripts/jira-transition.mjs`](../scripts/jira-transition.mjs) for the key in `test_execution_key`, and only for that key:
+
+| Run outcome | Jira status of the original issue |
+|---|---|
+| Tests passed and the import succeeded | **Completed**, plus a comment with a link to the GitHub run |
+| A test failed, the import failed, or an earlier step failed | **Failed**, plus a comment with a link to the run |
+| Dry run | Unchanged. It only checks which transition it would use |
+| The issue is not in a status from which Completed/Failed can be reached (e.g. a manual run with a key on an Open issue) | Unchanged. A warning is shown on the run page |
+
+- **The transition is chosen by its target status name,** not its id. The defaults are `Completed` and `Failed`; they can be overridden with the environment variables `JIRA_STATUS_PASSED` and `JIRA_STATUS_FAILED`.
+- **The step always runs, even after a failure,** so a Jira-triggered issue never stays in AUTOMATION IN PROGRESS.
+- **The step itself fails (exit code 2)** on a Jira API error or missing secrets.
+
+Required GitHub secrets for Jira-triggered runs (checked at the start, only when a key is given):
+
+| Secret | Value |
+|---|---|
+| `JIRA_BASE_URL` | `https://<site>.atlassian.net` |
+| `JIRA_USER_EMAIL` | Email of the Jira account that performs the transition |
+| `JIRA_API_TOKEN` | An API token of that account (id.atlassian.com → Security → API tokens). The account needs permission to transition and comment on Test Executions in QTM |
+
+The Jira Automation rule only has to do two things: set AUTOMATION IN PROGRESS, and send the `workflow_dispatch` request with `"inputs": {"test_execution_key": "{{issue.key}}"}`. It must not wait for or look up a newly created issue.
 
 ## Linking another test
 

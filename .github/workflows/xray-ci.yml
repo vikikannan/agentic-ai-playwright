@@ -1,7 +1,8 @@
 # Runs the Playwright tests that are linked to Xray Tests (tag @xray, annotation test_key)
 # and imports their results into Xray Cloud (project QTM):
 #   - test_execution_key given (Jira Automation, or a manual run with a key): the results update
-#     that existing Test Execution; no new Test Execution is created.
+#     that existing Test Execution; no new Test Execution is created. Afterwards that same issue
+#     is moved to Completed (all passed) or Failed (any failure) through the Jira REST API.
 #   - no key (push to main, or a manual run without a key): a new Test Execution is created.
 # Setup, secrets and usage: docs/xray-ci-pipeline.md
 name: Playwright Xray CI
@@ -49,6 +50,10 @@ jobs:
       XRAY_TEST_ENVIRONMENT: chromium
 
     steps:
+      # First, so the final Jira status step can always find its script.
+      - name: Check out repository
+        uses: actions/checkout@v7
+
       - name: Check Xray secrets are configured
         env:
           XRAY_CLIENT_ID: ${{ secrets.XRAY_CLIENT_ID }}
@@ -59,8 +64,18 @@ jobs:
             exit 1
           fi
 
-      - name: Check out repository
-        uses: actions/checkout@v7
+      # Only for runs with a Test Execution key (Jira Automation): its final status is set at the end.
+      - name: Check Jira secrets are configured
+        if: ${{ inputs.test_execution_key != '' }}
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+        run: |
+          if [ -z "$JIRA_BASE_URL" ] || [ -z "$JIRA_USER_EMAIL" ] || [ -z "$JIRA_API_TOKEN" ]; then
+            echo "::error title=Jira secrets missing::Add the repository secrets JIRA_BASE_URL, JIRA_USER_EMAIL and JIRA_API_TOKEN (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -87,6 +102,20 @@ jobs:
           XRAY_TEST_EXECUTION_KEY: ${{ inputs.test_execution_key }}
           DRY_RUN_FLAG: ${{ inputs.dry_run && '--dry-run' || '' }}
         run: npm run test:xray:report -- $DRY_RUN_FLAG
+
+      # Jira-triggered runs only: move the ORIGINAL Test Execution out of AUTOMATION IN PROGRESS.
+      # Completed if the tests passed and the import succeeded; Failed for any failure, including
+      # earlier steps (so the issue is never left in progress). Runs even if earlier steps failed.
+      - name: Update Jira status of the original Test Execution
+        if: ${{ always() && inputs.test_execution_key != '' }}
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          TEST_EXECUTION_KEY: ${{ inputs.test_execution_key }}
+          RUN_RESULT: ${{ steps.xray-import.outcome == 'success' && 'passed' || 'failed' }}
+          DRY_RUN_FLAG: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: node scripts/jira-transition.mjs --issue "$TEST_EXECUTION_KEY" --result "$RUN_RESULT" $DRY_RUN_FLAG
 
       - name: Upload Playwright HTML report
         if: ${{ !cancelled() }}

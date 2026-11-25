@@ -25,6 +25,7 @@
 | 12 | Add `@xray` tags; create the Option 2 import script and npm scripts; dry-run tests | Claude Code, Opus 5.5 | Not available | Not available | Not available | Same limitation. No figures were estimated. |
 | 13 | Phase: CI pipeline (GitHub Actions) running the @xray tests and importing into Xray; script summary output; docs | Claude Code, Opus 5.5 | Not available | Not available | Not available | Same limitation. No figures were estimated. |
 | 14 | Fix: Jira-triggered runs created a new Test Execution instead of updating the original one | Claude Code, Opus 5.5 | Not available | Not available | Not available | Same limitation. No figures were estimated. |
+| 15 | Investigate QTM-27 → QTM-28 (Jira-triggered run created a new Test Execution); add the final Jira status update | Claude Code, Opus 5.5 | Not available | Not available | Not available | Same limitation. No figures were estimated. |
 
 **Token metrics availability:** The Claude Code VS Code extension does not show per-prompt or per-response token counts to the agent. They are recorded as *Not available* rather than estimated. If you need actual figures, take them from the Claude Code `/cost` command (where supported) or the Anthropic Console usage page, and add them to this table by hand.
 
@@ -981,6 +982,65 @@ Not changed: tests, test-to-Xray mapping, `playwright.config.ts`, `package.json`
 
 ---
 
+## 29. Prompt 15: Jira-triggered run created QTM-28 instead of updating QTM-27
+
+### 29.1 Prompt (summary)
+
+> Changing the status of a Test Execution in Jira triggers the pipeline, but a new Test Execution is created and updated. For example, the rule was triggered from QTM-27 but the run created QTM-28. Inspect the Jira ticket, the automation rule and the pipeline behaviour.
+>
+> Expected setup:
+> 1. A local script run creates a new Test Execution (works).
+> 2. A run started directly in GitHub creates a new Test Execution (works).
+> 3. A run triggered by the Jira Automation status change updates the same ticket once the pipeline completes.
+
+### 29.2 Findings
+
+| Evidence | Observation |
+|---|---|
+| QTM-27 changelog | 11:56:28 No run → Open; 11:56:32 Open → READY FOR AUTOMATION (owner); 11:56:35 → AUTOMATION IN PROGRESS (*Automation for Jira*). Still in AUTOMATION IN PROGRESS. It clones QTM-26 |
+| QTM-28 | Created 11:57:17; summary **"Playwright CI run #8 (6213007) – chromium – …"** |
+| Git | `main` is **ahead of `origin/main` by 1**. The fix `7bf97df` (§28) was committed but **never pushed** |
+| QTM-27 in Xray (read-only dry run) | It is a Test Execution with tests QTM-8 and QTM-9, so the §28 fix would have updated it |
+| QTM-27 transitions | From AUTOMATION IN PROGRESS: "Tests passed" (id 5) → Completed, "Tests Failed" (id 6) → Failed. Nothing in the pipeline performed either |
+| Automation rule | It cannot be read through the Atlassian connector (no automation-rule API). The behaviour is consistent with a correct rule: it set AUTOMATION IN PROGRESS and dispatched the workflow with the key |
+| Network | Today `git` and `curl` fail with an SSL certificate error (interception); Node's HTTPS to Xray still works |
+
+**Root cause:**
+1. **GitHub ran commit `6213007`,** where the key reached the workflow but was never passed to the script. The script therefore created QTM-28 through the multipart endpoint.
+2. **There was no final Jira status update** in the pipeline.
+
+### 29.3 Changes
+
+| File | Change |
+|---|---|
+| `scripts/jira-transition.mjs` (new) | Transitions the given issue by **target status** (`Completed` for passed, `Failed` for failed; configurable). Adds a comment with the run link. No-op if already in the target. Warning, without failing, if the transition is unavailable. Exit 2 on API error, bad input or missing settings. Dry-run support. The token is never printed. No dependencies |
+| `.github/workflows/xray-ci.yml` | Checkout moved first. A Jira secrets check when a key is given. Final step **Update Jira status of the original Test Execution** (`always()`, key given): result = `steps.xray-import.outcome == 'success'` ? passed : failed |
+| `docs/xray-ci-pipeline.md` | The Jira status section, the new secrets `JIRA_BASE_URL` / `JIRA_USER_EMAIL` / `JIRA_API_TOKEN`, the rule requirements, and validation |
+
+### 29.4 Verification (mocked Jira API; nothing changed in Jira)
+
+The mock's transitions were copied from QTM-27's real ones.
+
+| Case | Result |
+|---|---|
+| passed | GET issue, GET transitions, POST transition id 5 (Completed), POST comment with run link; exit 0 ✅ |
+| failed | POST transition id 6 (Failed); exit 0 ✅ |
+| dry run | "would apply Tests passed (id 5)"; no POST; exit 0 ✅ |
+| already Completed | No-op, exit 0 ✅ |
+| issue in Open | Warning plus annotation, status unchanged, exit 0 ✅ |
+| Jira HTTP 401 | Error, exit 2 ✅ |
+| bad key / bad result / missing token | Refused, exit 2 ✅ |
+| Token in output | Not present ✅ |
+| Workflow YAML | Parses; step order and conditions as intended ✅ |
+
+### 29.5 Owner actions
+
+1. **Push `main`** (includes `7bf97df`), because `git push` from the agent fails with the SSL error. The push to `main` creates one new Test Execution (expected setup point 2).
+2. **Add the secrets** `JIRA_BASE_URL`, `JIRA_USER_EMAIL` and `JIRA_API_TOKEN`.
+3. **Re-test with a new or reset Test Execution** (READY FOR AUTOMATION). QTM-27 is still in AUTOMATION IN PROGRESS. QTM-28 was created by the old code and has not been cleaned up.
+
+---
+
 ## 18. Change log
 
 | Date | Phase | Change |
@@ -998,3 +1058,4 @@ Not changed: tests, test-to-Xray mapping, `playwright.config.ts`, `package.json`
 | 2026-11-19 | 11–12 | `@xray` tags added; `scripts/xray-import.mjs` and npm scripts created; safety rules and end-to-end dry run verified; live multipart import awaiting approval |
 | 2026-11-19 | 13 | CI pipeline `xray-ci.yml` added (push to main and manual; reuses `npm run test:xray:report`); GitHub job summary and annotations added to the script; `docs/xray-ci-pipeline.md`; verified locally with simulated GitHub env. Committed and pushed as `4677697` (approved); CI run #1 succeeded and created **QTM-15** (QTM-8 and QTM-9 PASSED, no duplicate tests) |
 | 2026-11-24 | 14 | Root cause of new Test Executions on Jira-triggered runs found (key not passed; multipart create always used). Script and workflow now update the given Test Execution through `testExecKey` (guarded), create only when no key is given; verified with dry runs and intercepted requests; not committed |
+| 2026-11-25 | 15 | QTM-28 cause: fix `7bf97df` not pushed (GitHub ran `6213007`). Added `jira-transition.mjs` and a final workflow step (original key → Completed/Failed); verified with a mocked Jira API; not committed |
