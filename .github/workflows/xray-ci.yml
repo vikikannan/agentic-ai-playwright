@@ -1,7 +1,8 @@
 # Runs the Playwright tests that are linked to Xray Tests (tag @xray, annotation test_key)
 # and imports their results into Xray Cloud (project QTM):
-#   - test_execution_key given (Jira Automation, or a manual run with a key): the results update
-#     that existing Test Execution; no new Test Execution is created. Afterwards that same issue
+#   - test_execution_key given (Jira Automation, or a manual run with a key): only the Playwright
+#     tests mapped to the Tests selected in that Test Execution are run (dynamic test selection),
+#     and their results update that existing Test Execution; no new Test Execution is created. Afterwards that same issue
 #     is moved to Completed (all passed) or Failed (any failure) through the Jira REST API.
 #   - no key (push to main, or a manual run without a key): a new Test Execution is created.
 # Setup, secrets and usage: docs/xray-ci-pipeline.md
@@ -14,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Dry run: run the tests and check the mapping, credentials and target, but send no results to Xray'
+        description: 'Dry run: send no results to Xray. With a Test Execution key only the test selection is shown (no tests run); without a key the tests run but nothing is imported'
         type: boolean
         default: false
       test_plan_key:
@@ -89,7 +90,8 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      # Runs only the @xray tests in Chromium, writes test-results/junit/results.xml,
+      # With a key: runs only the tests selected in that Test Execution (unmapped/manual ones are
+      # reported as warnings); without a key: all @xray tests. Chromium, test-results/junit/results.xml,
       # imports the results that carry a test_key and reads the Test Execution back.
       # Exit code: Playwright's (1 if a test failed; results are still imported) or 2 if the import failed.
       - name: Run @xray tests and import results into Xray

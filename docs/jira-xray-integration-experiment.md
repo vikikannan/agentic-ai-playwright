@@ -26,6 +26,8 @@
 | 13 | Phase: CI pipeline (GitHub Actions) running the @xray tests and importing into Xray; script summary output; docs | Claude Code, Opus 5.5 | Not available | Not available | Not available | Same limitation. No figures were estimated. |
 | 14 | Fix: Jira-triggered runs created a new Test Execution instead of updating the original one | Claude Code, Opus 5.5 | Not available | Not available | Not available | Same limitation. No figures were estimated. |
 | 15 | Investigate QTM-27 → QTM-28 (Jira-triggered run created a new Test Execution); add the final Jira status update | Claude Code, Opus 5.5 | Not available | Not available | Not available | Same limitation. No figures were estimated. |
+| 16 | Confluence onboarding documentation for the Jira/Xray and GitHub Actions integration (draft page) | Claude Code, Opus 5.5 | Not available | Not available | Not available | Same limitation. No figures were estimated. |
+| 17 | Dynamic test selection: run only the Playwright tests mapped to the Tests selected in the Xray Test Execution | Claude Code, Opus 5.5 | Not available | Not available | Not available | Same limitation. No figures were estimated. |
 
 **Token metrics availability:** The Claude Code VS Code extension does not show per-prompt or per-response token counts to the agent. They are recorded as *Not available* rather than estimated. If you need actual figures, take them from the Claude Code `/cost` command (where supported) or the Anthropic Console usage page, and add them to this table by hand.
 
@@ -1041,6 +1043,82 @@ The mock's transitions were copied from QTM-27's real ones.
 
 ---
 
+## 30. Prompt 16: Confluence documentation of the integration
+
+**Request (summary):** write onboarding documentation for Test Engineers, QA Engineers and developers covering sections A–K: introduction, architecture, end-to-end workflow, Jira/Xray configuration, GitHub Actions, test mapping, Xray integration, release management, security, troubleshooting, limitations. Inspect the real implementation first, mark unverified items, publish to Confluence, and change no tests, workflow or scripts.
+
+**Inspection (read-only):**
+- **Repository at `377de88`:** the owner pushed `7bf97df` and committed and pushed the Jira status step as `377de88`.
+- **GitHub runs (public API):**
+  - #9 (push) and #13 (manual run without a key) each created a new Test Execution (QTM-30, QTM-34).
+  - #11 and #12 (Jira-triggered) updated QTM-31 and QTM-32 and moved both to Completed.
+  - #10 (QTM-29): the tests failed, and the Jira step returned HTTP 404 ("does not exist or no permission"), so QTM-29 stayed in AUTOMATION IN PROGRESS.
+- **Jira/Xray:**
+  - QTM-32 changelog: label added; READY FOR AUTOMATION at 13:41:36; AUTOMATION IN PROGRESS at 13:41:38 (Automation for Jira); Completed at 13:42:42, with the comment linking run #12.
+  - Xray runs on QTM-32: QTM-8 and QTM-9 PASSED. The project still has 4 Tests.
+  - QTM-33 is a local run that created a new Test Execution.
+- **Automation rule:** it still cannot be read through the connector. The page marks its settings as observed behaviour plus the standard GitHub dispatch API, to be checked against the real rule.
+
+**Result:** a Confluence **draft**, "Playwright Test Automation – Jira/Xray and GitHub Actions Integration" (page 3097591810), under "Agentic AI POC: Implementation & Findings" in space QTM. It has Mermaid diagrams with text equivalents, real code excerpts, and Verified/Implemented/Planned status labels. It contains no credentials, tokens or e-mail addresses, and the repository owner and name are placeholders.
+
+---
+
+## 31. Prompt 17: Dynamic test selection from the Xray Test Execution
+
+### 31.1 Prompt (summary)
+
+> When Jira Automation passes a Test Execution key, retrieve its Tests from the Xray API and map them to Playwright tests through the existing Xray Test ID annotations. Run only the selected, mapped tests and import the results into the same Test Execution.
+>
+> Report unmapped, manual and wrongly annotated Tests clearly, and never mark them as passed. Stop if nothing is automated. Handle the error cases. Add a dry run that shows the selection without running or importing. Update the documentation.
+>
+> Explain the current implementation and the approach first, then implement. Do not claim validation that wasn't actually executed.
+
+### 31.2 Findings (before the change)
+
+| Item | Observation |
+|---|---|
+| `xray-import.mjs --run` | Always ran `playwright test --project=chromium --grep @xray`. The key only filtered *which results were imported*, not which tests ran |
+| `findTestExecution` | Read at most 100 Tests and no test type |
+| Mapping | `@xray` tag + `test_key` annotation (QTM-8, QTM-9). Visible without running through `playwright test --list --reporter=json` |
+| Playwright 1.64 | `--test-list <file>` selects tests by exact title path (file › describe › title). A `file:line` filter would be a regular expression |
+| Xray GraphQL | `tests(limit, start)` and `testRuns(limit, start)` page correctly. `testType { name kind }` distinguishes Manual (`Steps`) from Generic (`Unstructured`) and Cucumber (`Gherkin`) |
+| Xray data (read-only) | QTM-6 and QTM-7 are Manual; QTM-8 and QTM-9 are Generic. QTM-11 = QTM-8 + QTM-7; QTM-35 = QTM-6 only; QTM-32 = QTM-8 + QTM-9 |
+
+### 31.3 Changes (not committed)
+
+| File | Change |
+|---|---|
+| `scripts/xray-import.mjs` | Paged `findTestExecution` (with test type). `listPlaywrightMappings` (from `--list`, flags annotation problems). `resolveSelection` (run, manual, no Playwright test, incorrect annotation). Runs `--test-list` with the selected tests only. Warning annotation and job-summary table for not-run Tests. Exit 2 when nothing is mapped or the Test Execution is empty, and when a selected test has no result. JUnit sanity check. Paged read-back. Dry run with a key = selection preview only. Mode without a key unchanged |
+| `.github/workflows/xray-ci.yml` | Comments and the `dry_run` input description only. No logic change |
+| `docs/xray-ci-pipeline.md` | New section *Dynamic test selection* (Xray API, mapping, decisions, dry run, sample log, limitations). Mode table, inputs, failure table and commands updated. A stale "triggering from Jira is a later phase" line removed |
+
+### 31.4 Validation actually executed
+
+| Scenario | How | Result |
+|---|---|---|
+| Two automated tests selected (QTM-32) | Real Xray, read-only dry run | Both `run`, exit 0 ✅ |
+| One automated + one manual (QTM-11) | Real Xray, read-only dry run | QTM-8 `run`, QTM-7 `NOT RUN – Manual test – not automated` ✅ |
+| No automated test (QTM-35, Manual only) | Real Xray, read-only dry run | Stopped before Playwright, exit 2 ✅ |
+| Invalid key (`qtm 32`, `ABC-1`, Test QTM-9, QTM-99999) | Real Xray, read-only | Clear error, exit 2 ✅ |
+| Unmapped Generic, wrong annotation, duplicate key, paging (6 Tests, 1 per page) | Fake Xray and fake listing entries (test-only preload) | Correct decisions and notes ✅ |
+| Only QTM-8 selected (+ QTM-6 manual) | **Real Playwright**, fake Xray, GitHub env simulated | Exactly 1 test ran; import `testExecKey=QTM-901` with QTM-8 only; warning annotation; step output; read-back ok ✅ |
+| Selected tests fail | Real Playwright with `--timeout=1` added, `CI=true` (2 retries), fake Xray | FAILED results imported, exit 1 ✅ |
+| Xray auth 401 / GraphQL 500 / import 400 | Fake Xray | Clear error, exit 2 ✅ |
+| Report missing / not JUnit | Local | Clear error, exit 2 ✅ |
+| Selected test without result | Real Playwright with `--grep-invert` added | `MISSING QTM-8`; QTM-9 imported; exit 2 ✅ |
+| No-key mode (regression) | Real Playwright, fake Xray | `--grep @xray`, multipart (new Test Execution) unchanged ✅ |
+| Paged `testRuns` query | Real Xray, read-only (QTM-32) | Accepted ✅ |
+
+**Not yet validated:** a real import into a real Test Execution with the new code, and a GitHub Actions run. Both need approval, because they write to Xray and Jira and need the change pushed.
+
+### 31.5 Lessons learned
+
+- **The mapping already lived in the code.** `playwright test --list --reporter=json` exposes annotations without running anything, so no second mapping file was needed.
+- **`--test-list` needs the full title path, including describe blocks.** A title on its own matches nothing.
+- **The test list must be written outside `test-results/`,** which Playwright empties at the start of a run.
+
+---
+
 ## 18. Change log
 
 | Date | Phase | Change |
@@ -1059,3 +1137,5 @@ The mock's transitions were copied from QTM-27's real ones.
 | 2026-11-19 | 13 | CI pipeline `xray-ci.yml` added (push to main and manual; reuses `npm run test:xray:report`); GitHub job summary and annotations added to the script; `docs/xray-ci-pipeline.md`; verified locally with simulated GitHub env. Committed and pushed as `4677697` (approved); CI run #1 succeeded and created **QTM-15** (QTM-8 and QTM-9 PASSED, no duplicate tests) |
 | 2026-11-24 | 14 | Root cause of new Test Executions on Jira-triggered runs found (key not passed; multipart create always used). Script and workflow now update the given Test Execution through `testExecKey` (guarded), create only when no key is given; verified with dry runs and intercepted requests; not committed |
 | 2026-11-25 | 15 | QTM-28 cause: fix `7bf97df` not pushed (GitHub ran `6213007`). Added `jira-transition.mjs` and a final workflow step (original key → Completed/Failed); verified with a mocked Jira API; not committed |
+| 2026-11-26 | 16 | Integration documented in a Confluence draft (page 3097591810) after a read-only check of the code, the GitHub runs and Jira/Xray; Jira-triggered flow verified live (QTM-31, QTM-32) |
+| 2026-11-27 | 17 | Dynamic test selection: with a Test Execution key only the mapped Tests run (`--test-list`); manual, unmapped and wrongly annotated Tests are reported and left unchanged; dry run previews the selection. Validated read-only against real Xray and with real Playwright and a mocked Xray; no real import yet; not committed |
