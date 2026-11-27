@@ -1,7 +1,11 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('Filter products by brand', () => {
-  test('AE-02: Filter products by brand [CLAUDE]', { tag: '@poc' }, async ({ page }) => {
+  test('AE-02: Filter products by brand [CLAUDE]', {
+    tag: ['@poc', '@xray'],
+    // Xray: report results of this test against the existing Xray Test QTM-39.
+    annotation: { type: 'test_key', description: 'QTM-39' },
+  }, async ({ page }) => {
     // Pages are opened at DOMContentLoaded: the full "load" event waits for third-party ad scripts
     // (observed at 20-48 s on /products), which alone can exceed the 30 s test timeout.
     // Because the page is no longer fully loaded, the consent dialog may appear at any time,
